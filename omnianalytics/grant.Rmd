@@ -1,0 +1,456 @@
+---
+title: "Gitcoin Grants Analysis"
+author: "Omni Analytics Group"
+date: "12/31/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning=FALSE, message=FALSE, fig.width=12, fig.height=8)
+```
+
+## Getting Started
+
+Gitcoin is a data rich platform that is moving steadily towards leveraging its treasure trove of information in novel and interesting ways.  This analysis of the lifetime Gitcoin grants data seeks to be both comprehensive and insightful with just enough quirkiness thrown in to highlight just how interesting the analysis of this data can be.
+
+## Grant Round Timing
+
+First, we can visualize the active grant round periods over time.  One would expect regular intervals of time between each round, but that historically hasn't been the case.
+
+
+```{r}
+library(tidyverse)
+library(ggthemes)
+library(knitr)
+library(lubridate)
+library(tidytext)
+library(topicmodels)
+library(omnitheme)
+
+gitcoin_grants <- read_csv("Grants Results History Round over Round + Grant over Grant - GR1-GR12.csv")
+
+time_periods <- gitcoin_grants %>%
+    distinct(round_start_date, round_end_date, .keep_all = TRUE) %>%
+    arrange(round_start_date) %>%
+    mutate(year = year(round_start_date),
+           fake = ymd(paste("2022", month(round_start_date), day(round_start_date), sep = "-")),
+           fake_end = ymd(paste("2022", month(round_end_date), day(round_end_date), sep = "-")))
+
+
+
+ggplot(data = time_periods, aes(xmin = round_start_date, xmax = round_end_date, fill = factor(round_number))) +
+    geom_rect(ymin = 0, ymax = 1, colour = "grey60") +
+    geom_label(aes(label = paste0("#", round_number), x = round_start_date, y = .5)) +
+    scale_fill_brewer(palette = "Set3") +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %Y") +
+    labs(
+        title = "Active Periods for each Gitcoin Grants Round",
+        subtitle = "Periods colored by round number"
+    ) +
+    theme_fivethirtyeight() +
+    theme(legend.position = "off", axis.text.y = element_blank()) +
+    watermark_img(filename = "gc.png", location = "center", width = 300, alpha = 0.2)
+
+time_periods %>%
+    select(Round = round_number, `Start Date` = round_start_date, `End Date` = round_end_date) %>%
+    kable()
+
+```
+
+We can make this more clear by stacking each year vertically, which indicates that the grant rounds both occurred at different times during the year, and lasted for different amounts of time with 2020 being one of the busiest years.
+
+```{r, fig.width=14}
+ggplot(data = time_periods, aes(xmin = fake, xmax = fake_end, fill = factor(round_number))) +
+    geom_rect(ymin = 0, ymax = 1, colour = "grey60") +
+    geom_label(aes(label = paste0("#", round_number), x = fake, y = .5)) +
+    scale_fill_brewer(palette = "Set3") +
+    scale_x_date(date_breaks = "2 weeks", date_labels = "%b %d") +
+    facet_wrap(~year, nrow = 4) +
+    labs(
+        title = "Active Periods for each Gitcoin Grants Round",
+        subtitle = "Periods colored by round number"
+    ) +
+    theme_fivethirtyeight() +
+    theme(legend.position = "off", axis.text.y = element_blank())
+```
+
+
+## Text Analysis on Grant Titles
+
+With a little bit of text analysis we can better understand the types of grants that are hosted on the site by categorizing them according to their titles. Here we've performed a Latent Dirichlet Allocation algorithm on the grant titles, after performing some basic text cleaning operations. We selected six themes for the analysis. Below we can see the top terms that fell into each of the six categories.
+
+Roughly speaking, the categories obtained for the grants are as follows:
+
+1. DeFi - Grants associated with Decentralized Finance
+2. Blockchain/Crypto - General blockchain development projects
+3. Panvala League - Grants associated with the Panvala shared endowment
+4. DAO and Community - Grants seeking to build a community or DAO
+5. Insights and Media Awareness - Grants involving dashboards and social media awareness for the project
+6. NFTs - Grants related to NFTs
+
+```{r}
+title_tdm1 <- gitcoin_grants %>%
+    select(grant_id, grant_title) %>%
+    unnest_tokens("word", grant_title) %>%
+    anti_join(get_stopwords()) %>%
+    group_by(grant_id, word) %>%
+    add_tally() 
+title_tdm <- title_tdm1 %>%
+    cast_tdm(grant_id, word, n)
+
+my_lda <- LDA(title_tdm, k = 6, control = list(seed = 1234))
+tidy_lda <- tidy(my_lda, matrix = "beta")
+
+tidy_lda %>%
+    group_by(topic) %>%
+    slice_max(beta, n = 10) %>% 
+    ungroup() %>%
+    arrange(topic, -beta) %>%
+    mutate(term = reorder_within(term, beta, topic)) %>%
+    ggplot(aes(beta, term, fill = factor(topic))) +
+    geom_col(show.legend = FALSE) +
+    facet_wrap(~ topic, scales = "free") +
+    scale_fill_brewer(palette = "Dark2") +
+    scale_y_reordered() +
+    labs(
+        title = "Gitcoin Grant Themes in Grant Titles",
+        subtitle = "Through Gitcoin Grants Round 12"
+    )
+```
+
+
+A fun exercise is to look at the amount of money raised by projects with specific words in their descriptions. Not surprisingly the word "blockchains" was used in quite often and the total amount raised by grants with that in the title amounted to  	$6,984,782 across all rounds. Other popular words with donors were "policy", "makers", "privacy", and "accounting".
+
+# Top 30 words by total amount raised
+
+```{r}
+title_tdm1 %>%
+    left_join(gitcoin_grants %>% select(grant_id, total)) %>%
+    mutate(total = readr::parse_number(total)) %>%
+    group_by(word) %>%
+    summarise(total = sum(total)) %>%
+    arrange(desc(total)) %>%
+    mutate(total = scales::dollar(total)) %>%
+    slice(1:30) %>%
+    kable()
+```
+
+An slightly deeper analysis normalizing for the word frequency could further unearth other specific words that resonate with Gitcoin donors enough for them to donate heavily to grants with those keywords. An even more interesting follow up would be to see how the previously derived topic-model based categories have changed over time across rounds. This could answer questions like: Have there been more or fewer social awareness grants? or When did NFT related grants become popular?
+
+## Distributions and Spreads
+
+We now want to look at how the monetary contributions are spread out by contributions, the number of unique contributors and matching funds. The most unsurprising results we see is that the most common contribution is indeed \$1 and was, by far, the amount that appeared most frequently in the data.  On average donors gave somewhere between \$100 and \$500 as indicated by the vertical line. At the skew we see about some contributions totaling more than \$10,000. Across the rounds you can see not only the total volume increasing, but the average donation moving upward overtime.
+
+```{r}
+ggplot(data = gitcoin_grants, aes(x = num_contributions)) +
+    geom_histogram(colour = "grey60", fill = "purple2") +
+    geom_vline(xintercept = mean(gitcoin_grants$num_contributions), colour = "orange1") +
+    scale_x_log10(labels = scales::dollar, breaks = 10^(-2:10)) +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10),
+                       labels = scales::comma) +
+    labs(
+        title = "Distribution of Contributions (Log Scale - $)",
+        subtitle = "Through Gitcoin Grants Round 12",
+    ) +
+    theme_fivethirtyeight() +
+    watermark_img(filename = "gc.png", location = "center", width = 300, alpha = 0.2)
+```
+What's cool about looking at the number of unique contributors is the fact that we see most grants get more than 1 donor, even the smaller grants. 
+```{r}
+dat2 <- gitcoin_grants %>% group_by(round_number) %>% summarise(avg = mean(num_contributions, na.rm = TRUE))
+
+ggplot(data = gitcoin_grants, aes(x = num_contributions)) +
+    geom_histogram(colour = "grey60", fill = "purple2") +
+    geom_vline(data = dat2, aes(xintercept = avg), colour = "orange1") +
+    scale_x_log10(labels = scales::dollar, breaks = 10^(-2:10)) +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10),
+                       labels = scales::comma) +
+    facet_wrap(~round_number) +
+    labs(
+        title = "Distribution of Contributions by Round (Log Scale - $)",
+        subtitle = "Through Gitcoin Grants Round 12",
+    ) +
+    theme_fivethirtyeight()
+```
+
+
+
+```{r}
+ggplot(data = gitcoin_grants, aes(x = num_unique_contributors)) +
+    geom_histogram(colour = "grey60", fill = "purple2") +
+    geom_vline(xintercept = mean(gitcoin_grants$num_unique_contributors), colour = "orange1") +
+    scale_x_log10(labels = scales::comma, breaks = 10^(-2:10)) +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10),
+                       labels = scales::comma) +
+    labs(
+        title = "Distribution of Unique Contributors (Log Scale)",
+        subtitle = "Through Gitcoin Grants Round 12",
+    ) +
+    theme_fivethirtyeight()
+```
+
+```{r}
+dat2 <- gitcoin_grants %>% group_by(round_number) %>% summarise(avg = mean(num_unique_contributors, na.rm = TRUE))
+
+ggplot(data = gitcoin_grants, aes(x = num_unique_contributors)) +
+    geom_histogram(colour = "grey60", fill = "purple2") +
+    geom_vline(data = dat2, aes(xintercept = avg), colour = "orange1") +    
+    scale_x_log10(labels = scales::comma, breaks = 10^(-2:10)) +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10),
+                       labels = scales::comma) +
+    facet_wrap(~round_number) +
+    labs(
+        title = "Distribution of Unique Contributors by Round (Log Scale)",
+        subtitle = "Through Gitcoin Grants Round 12",
+    ) +
+    theme_fivethirtyeight()
+```
+
+For the match amount, on average, successful grants receive about \$1000 in additional funds from the pool. This amount has been relatively consistent overtime.
+
+```{r}
+dat <- gitcoin_grants %>% mutate(match_amount = readr::parse_number(match_amount))
+
+ggplot(data = dat, aes(x = match_amount)) +
+    geom_histogram(colour = "grey60", fill = "purple2") +
+    geom_vline(xintercept = mean(dat$match_amount), colour = "orange1") +
+    scale_x_log10(labels = scales::dollar, breaks = 10^(-2:10)) +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10),
+                       labels = scales::comma) +
+    labs(
+        title = "Distribution of Match Amount (Log Scale - $)",
+        subtitle = "Through Gitcoin Grants Round 12",
+    ) +
+    theme_fivethirtyeight()
+```
+
+```{r, fig.width=22}
+dat <- gitcoin_grants %>% mutate(match_amount = readr::parse_number(match_amount))
+dat2 <- dat %>% group_by(round_number) %>% summarise(avg = mean(match_amount, na.rm = TRUE))
+
+ggplot(data = dat, aes(x = match_amount)) +
+    geom_histogram(colour = "grey60", fill = "purple2") +
+    geom_vline(data = dat2, aes(xintercept = avg), colour = "orange1") +
+    scale_x_log10(labels = function(.) paste0("$", scales::comma(., accuracy = 1)), breaks = 10^(-2:10)) +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10),
+                       labels = scales::comma) +
+    facet_wrap(~round_number) +
+    labs(
+        title = "Distribution of Match Amount by Round (Log Scale - $)",
+        subtitle = "Through Gitcoin Grants Round 12",
+    ) +
+    theme_fivethirtyeight()
+```
+
+
+Next, we take a look at the number of grants by region. Grants that are not associated with a particular region are the plurality, followed by North America and Europe. The least commonly associated regions for grants were the Middle East and Oceania.
+
+```{r}
+# Number of grants per region total and over time
+gitcoin_grants %>%
+    mutate(region = ifelse(region %in% c("none", "undefined", "null"), "none", region)) %>%
+    group_by(region) %>%
+    summarise(grants = n()) %>%
+    arrange(desc(grants)) %>%
+    kable()
+```
+
+With that said, the aggregate view doesn't demonstrate how these values have changed over time. When we break that down, we see a noticeable recent growth across all regions, with a particularly sharp recent increase for East Asia and Southeast Asia. 
+
+```{r}
+gitcoin_grants %>%
+    mutate(region = ifelse(region %in% c("none", "undefined", "null"), "none", region)) %>%
+    group_by(month = month(round_start_date), year = year(round_start_date), region) %>%
+    summarise(grants = n()) %>%
+    mutate(Date = ymd(paste(year, month, "01", sep = "-"))) %>%
+    ggplot(aes(x = Date, y = grants, colour = region)) +
+    geom_line(size = 1.5) +
+    scale_color_brewer(palette = "Set3") +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %y") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+    labs(
+        title = "Number of Grants over Time by Region",
+        subtitle = "Through Gitcoin Grants Round 12"
+    ) +
+    theme_fivethirtyeight() +
+    watermark_img(filename = "gc.png", location = "center", width = 300, alpha = 0.2)
+```
+
+We can further break this down by faceting by grant category. We quickly see that the growth across regions is not uniform by category. For example, Community grants appear to be growing faster for Southeast Asia than are other grant categories.
+
+```{r, fig.height=20}
+# Number of grants per region per category in total and overtime
+gitcoin_grants %>%
+    mutate(region = ifelse(region %in% c("none", "undefined", "null"), "none", region)) %>%
+    group_by(month = month(round_start_date), year = year(round_start_date), region, category) %>%
+    summarise(grants = n()) %>%
+    mutate(Date = ymd(paste(year, month, "01", sep = "-"))) %>%
+    ggplot(aes(x = Date, y = grants, colour = region)) +
+    geom_line(size = 1.5) +
+    scale_color_brewer(palette = "Set3") +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %y") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+    facet_wrap(~category, ncol = 1) +
+    labs(
+        title = "Number of Grants over Time by Region and Category",
+        subtitle = "Through Gitcoin Grants Round 12"
+    ) +
+    theme_fivethirtyeight()
+```
+
+Next, let's look at contributors by region. Once again, no region, North America, and Europe dominate the list. However, there are some differences towards the bottom. For example, despite Oceania having the fewest number of total grants, it only has the third fewest contributors, suggesting that their grants have attracted a high level of interest in that region.
+
+```{r}
+# Number of contributors per region in total and over time
+gitcoin_grants %>%
+    mutate(region = ifelse(region %in% c("none", "undefined", "null"), "none", region)) %>%
+    group_by(region) %>%
+    summarise(contributors = sum(num_unique_contributors)) %>%
+    arrange(desc(contributors)) %>%
+    kable()
+```
+
+Once again, we can visualize this as a function of time. We see a drastic increase in the number of contributors associated with grants for Europe and East Asia, with a relative decline for grants that aren't associated with a region.
+
+```{r}
+gitcoin_grants %>%
+    mutate(region = ifelse(region %in% c("none", "undefined", "null"), "none", region)) %>%
+    group_by(month = month(round_start_date), year = year(round_start_date), region) %>%
+    summarise(contributors = sum(num_unique_contributors)) %>%
+    mutate(Date = ymd(paste(year, month, "01", sep = "-"))) %>%
+    ggplot(aes(x = Date, y = contributors, colour = region)) +
+    geom_line(size = 1.5) +
+    scale_color_brewer(palette = "Set3") +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %y") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10),
+                       labels = scales::comma) +
+    labs(
+        title = "Number of Unique Contributors over Time by Region",
+        subtitle = "Through Gitcoin Grants Round 12"
+    ) +
+    theme_fivethirtyeight() +
+    watermark_img(filename = "gc.png", location = "center", width = 300, alpha = 0.2)
+```
+
+Next, we can look at the total crowd-funded contributions by region, which largely tells the same story. Interestingly, once again Oceania has a relatively higher amount of contributions when compared to the number of grants for that region.
+
+```{r}
+# Total crowdfunded contributions per region
+gitcoin_grants %>%
+    mutate(region = ifelse(region %in% c("none", "undefined", "null"), "none", region),
+           crowdfund_amount_contributions_usd = readr::parse_number(crowdfund_amount_contributions_usd)) %>%
+    group_by(region) %>%
+    summarise(contributions = sum(crowdfund_amount_contributions_usd, na.rm = TRUE)) %>%
+    arrange(desc(contributions)) %>%
+    mutate(contributions = scales::dollar(contributions)) %>%
+    kable()
+```
+
+We can also visualize the top 10 grants per region, and the round associated, based on the total crowd-funded amount. Plenty to see in this table, but one previous finding is given some support - it appears the Lighthouse Ethereum 2.0 Client is a reason for the Oceania values being higher in terms of amount of contributors while lesser in terms of the total number.
+
+```{r}
+# Top 10 grants per region
+gitcoin_grants %>%
+    mutate(region = ifelse(region %in% c("none", "undefined", "null"), "none", region),
+           crowdfund_amount_contributions_usd = readr::parse_number(crowdfund_amount_contributions_usd)) %>%
+    group_by(region) %>%
+    arrange(desc(crowdfund_amount_contributions_usd)) %>%
+    slice(1:10) %>%
+    mutate(contributions = scales::dollar(crowdfund_amount_contributions_usd)) %>%
+    select(Region = region, Round = round_number, Grant = grant_title, Amount = contributions) %>%
+    kable()
+```
+
+Next we turn to an aggregate view of grants by category, which indicates the most popular grant categories are Community and dApp Tech. 
+
+```{r}
+# Number of grants per category total and over time
+gitcoin_grants %>%
+    group_by(category) %>%
+    summarise(grants = n()) %>%
+    arrange(desc(grants)) %>%
+    kable()
+```
+
+As a function of time, it is clear that these two categories have long been popular, but their relative popularity has accelerated in recent months.
+
+```{r}
+gitcoin_grants %>%
+    group_by(month = month(round_start_date), year = year(round_start_date), category) %>%
+    summarise(grants = n()) %>%
+    mutate(Date = ymd(paste(year, month, "01", sep = "-"))) %>%
+    ggplot(aes(x = Date, y = grants, colour = category)) +
+    geom_line(size = 1.5) +
+    scale_color_brewer(palette = "Set3") +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %y") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+    labs(
+        title = "Number of Grants over Time by Category",
+        subtitle = "Through Gitcoin Grants Round 12"
+    ) +
+    theme_fivethirtyeight() +
+    watermark_img(filename = "gc.png", location = "center", width = 300, alpha = 0.2)
+```
+
+Despite Community being overall the top category, contributors appear more likely to gravitate towards grants that are either dApp Tech or Infra Tech.
+
+```{r}
+# Number of contributors per category in total and over time
+gitcoin_grants %>%
+    group_by(category) %>%
+    summarise(contributors = sum(num_unique_contributors)) %>%
+    arrange(desc(contributors)) %>%
+    kable()
+```
+
+With that said, as can be seen by the below chart, in the most recent months there has been an acceleration in the number of unique contributors to Community grants in recent months.
+
+```{r}
+gitcoin_grants %>%
+    group_by(month = month(round_start_date), year = year(round_start_date), category) %>%
+    summarise(contributors = sum(num_unique_contributors)) %>%
+    mutate(Date = ymd(paste(year, month, "01", sep = "-"))) %>%
+    ggplot(aes(x = Date, y = contributors, colour = category)) +
+    geom_line(size = 1.5) +
+    scale_color_brewer(palette = "Set3") +
+    scale_x_date(date_breaks = "3 months", date_labels = "%b %y") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10),
+                       labels = scales::comma) +
+    labs(
+        title = "Number of Unique Contributors over Time by Category",
+        subtitle = "Through Gitcoin Grants Round 12"
+    ) +
+    theme_fivethirtyeight() +
+    watermark_img(filename = "gc.png", location = "center", width = 300, alpha = 0.2)
+```
+
+Looking at the popularity of categories in terms of total crowd-funded contributions, we see a similar pattern, although Infra Tech projects have had nearly as much funded as have dApp Tech and Community projects, despite less than half the total number of grants.
+
+```{r}
+# Total crowdfunded contributions per category
+gitcoin_grants %>%
+    mutate(crowdfund_amount_contributions_usd = readr::parse_number(crowdfund_amount_contributions_usd)) %>%
+    group_by(category) %>%
+    summarise(contributions = sum(crowdfund_amount_contributions_usd, na.rm = TRUE)) %>%
+    arrange(desc(contributions)) %>%
+    mutate(contributions = scales::dollar(contributions)) %>%
+    kable()
+```
+
+We can explore the top grants by category and round to see that certain projects have an outsized influence on the category in terms of the amount funded, such as the Coin Center grant under the Community category.
+
+```{r}
+# Top 10 grants per category
+gitcoin_grants %>%
+    mutate(crowdfund_amount_contributions_usd = readr::parse_number(crowdfund_amount_contributions_usd)) %>%
+    group_by(category) %>%
+    arrange(desc(crowdfund_amount_contributions_usd)) %>%
+    slice(1:10) %>%
+    mutate(contributions = scales::dollar(crowdfund_amount_contributions_usd)) %>%
+    select(Category = category, Round = round_number, Grant = grant_title, Amount = contributions) %>%
+    kable()
+```
+## Bonus Application 
+
+You really read down this far? That means you are interested in learning more!  Maybe seeing specific trends on donations for intdividual grants? As a prize for your diligence and curiosity, please take a look at our app hosted here:  https://crypto.omnianalytics.io/apps/gitcoin-grants-lifetime-analysis/
+

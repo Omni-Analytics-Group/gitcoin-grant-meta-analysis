@@ -1,0 +1,31 @@
+{
+  "files": {
+    "main.css": "/rainbow-report/static/css/main.8f1c3cf4.css",
+    "main.js": "/rainbow-report/static/js/main.397ed3e1.js",
+    "static/js/787.fbfc1532.chunk.js": "/rainbow-report/static/js/787.fbfc1532.chunk.js",
+    "static/media/grants.csv": "/rainbow-report/static/media/grants.c1bf4492ce5bbb73c06e.csv",
+    "static/media/grants_gr12.csv": "/rainbow-report/static/media/grants_gr12.4874759102fed3f3e034.csv",
+    "static/media/gitcoin.png": "/rainbow-report/static/media/gitcoin.02e967010e865386f8a5.png",
+    "static/media/funds.csv": "/rainbow-report/static/media/funds.ce2767fe0281d92913a2.csv",
+    "static/media/leaderboard.csv": "/rainbow-report/static/media/leaderboard.e5195376ef385078a27d.csv",
+    "index.html": "/rainbow-report/index.html",
+    "static/media/leaderboard_gr12.csv": "/rainbow-report/static/media/leaderboard_gr12.d460ef130167d34e1c35.csv",
+    "static/media/overview.csv": "/rainbow-report/static/media/overview.2e4910684a161ae86a31.csv",
+    "static/media/ratios_gr01gr12.csv": "/rainbow-report/static/media/ratios_gr01gr12.0e20d8acda59949f22a4.csv",
+    "static/media/ratios.csv": "/rainbow-report/static/media/ratios.4315e79a9fd69a5e6452.csv",
+    "static/media/stacked_funds.csv": "/rainbow-report/static/media/stacked_funds.9a2a5d449f51bef80cd6.csv",
+    "static/media/ratios_gr12.csv": "/rainbow-report/static/media/ratios_gr12.c51f525ce1ea5d0daf8a.csv",
+    "static/media/averages.csv": "/rainbow-report/static/media/averages.1c8dd056936be720c0f4.csv",
+    "static/media/stacked_contributions.csv": "/rainbow-report/static/media/stacked_contributions.6d85a0f66eb3c45a1898.csv",
+    "static/media/funds_gr12.csv": "/rainbow-report/static/media/funds_gr12.5d3a61221e7ccda9d709.csv",
+    "static/media/stacked_grants.csv": "/rainbow-report/static/media/stacked_grants.b1c18cd05791837cb349.csv",
+    "static/media/averages_gr12.csv": "/rainbow-report/static/media/averages_gr12.e0ea670ca392eb87abd8.csv",
+    "main.8f1c3cf4.css.map": "/rainbow-report/static/css/main.8f1c3cf4.css.map",
+    "main.397ed3e1.js.map": "/rainbow-report/static/js/main.397ed3e1.js.map",
+    "787.fbfc1532.chunk.js.map": "/rainbow-report/static/js/787.fbfc1532.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.8f1c3cf4.css",
+    "static/js/main.397ed3e1.js"
+  ]
+}
